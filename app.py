@@ -15,6 +15,9 @@ from dotenv import load_dotenv
 from langgraph.checkpoint.redis import RedisSaver
 from langchain_core.messages.utils import trim_messages,count_tokens_approximately
 from fastapi import FastAPI, HTTPException
+import base64
+import json
+import requests
 #from supermemory import Supermemory
 
 load_dotenv()
@@ -159,6 +162,101 @@ class ChatResponse(BaseModel):
     res: str
 
 
+class NutritionRequest(BaseModel):
+    image_base64: str
+
+
+class NutritionResponse(BaseModel):
+    foods: list
+    nutrition: dict
+    score: int
+    color: str
+    overall: str
+
+
+def analyze_nutrition(img_base64: str) -> dict:
+    """Analyze food image for nutritional content using NVIDIA API."""
+    
+    api_key = os.getenv("NVIDIA_API_KEY")
+    invoke_url = "https://integrate.api.nvidia.com/v1/chat/completions"
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json"
+    }
+    
+    prompt = """You are a nutrition assistant specialized in PCOS.
+
+From the image:
+1. Identify main food items
+2. Estimate nutritional values:
+   - calories
+   - protein
+   - carbs
+   - sugar
+   - fat
+   - fiber
+
+3. Give a health score (1–10):
+   - high sugar or refined carbs → lower score
+   - high fat/oil → lower score
+   - high protein and fiber → higher score
+
+4. Assign color:
+   - 8–10 → GREEN (healthy)
+   - 5–7 → YELLOW (moderate)
+   - 1–4 → RED (avoid)
+
+5. Give a short overall statement (max 12 words)
+
+Return ONLY JSON:
+
+{
+  "foods": ["name"],
+  "nutrition": {
+    "calories": number,
+    "protein": number,
+    "carbs": number,
+    "sugar": number,
+    "fat": number,
+    "fiber": number
+  },
+  "score": number,
+  "color": "GREEN | YELLOW | RED",
+  "overall": "short health summary"
+}"""
+    
+    payload = {
+        "model": "microsoft/phi-3.5-vision-instruct",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{img_base64}"
+                        }
+                    }
+                ]
+            }
+        ],
+        "max_tokens": 1200,
+        "temperature": 0.2,
+        "top_p": 0.7,
+        "stream": False
+    }
+    
+    response = requests.post(invoke_url, headers=headers, json=payload)
+    result = response.json()
+    raw_output = result["choices"][0]["message"]["content"]
+    clean_output = raw_output.replace("```json", "").replace("```", "").strip()
+    data = json.loads(clean_output)
+    
+    return data
+
+
 app = FastAPI(title="HealHer Chatbot API", version="1.0.0")
 
 
@@ -181,3 +279,12 @@ def chat(req: ChatRequest) -> ChatResponse:
             return ChatResponse(res=result["res"])
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Chat processing failed: {exc}")
+
+
+@app.post("/nutrition", response_model=NutritionResponse)
+def nutrition(req: NutritionRequest) -> NutritionResponse:
+    try:
+        result = analyze_nutrition(req.image_base64)
+        return NutritionResponse(**result)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Nutrition analysis failed: {exc}")
