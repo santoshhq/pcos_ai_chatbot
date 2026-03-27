@@ -20,8 +20,8 @@ from fastapi import FastAPI, HTTPException
 load_dotenv()
 api_key = os.getenv("NVIDIA_API_KEY")
 assert api_key is not None, "API key missing"
-#memory = Supermemory(api_key="sm_AmHfjCyatFs9LQRqJ6nLfN_NiULTBgrZzSnFKzNapZdbpIYnnpJgSXshFhJXVLHzJLclxqoIrMyYlXtNciXcXAS")
-#gemini_model=ChatGoogleGenerativeAI(model="gemini-2.5-flash",api_key="AIzaSyDcAw2IU0FWMjzcepyyRton3MpXLtuLR90")
+#memory = Supermemory(api_key="")
+#gemini_model=ChatGoogleGenerativeAI(model="gemini-2.5-flash",api_key="")
 gemini_model=ChatNVIDIA(
   model="deepseek-ai/deepseek-v3.2",
   api_key=os.getenv("NVIDIA_API_KEY")
